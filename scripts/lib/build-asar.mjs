@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -13,6 +14,13 @@ import { packStagedAppWithIntegrity } from "./asar-integrity.mjs";
 import { resolveRuntimeApp } from "./runtime.mjs";
 
 export const reconstructedUpdaterGuard = [
+  'process.env.CODEXBOT_LOCAL_ONLY = "1";',
+  'process.env.SAND_USER_DATA_DIR = require("node:path").join(require("node:os").homedir(), "Library/Application Support/Grok Bot 0.18 Reconstructed");',
+  'process.env.SAND_DATA_ROOT = require("node:path").join(process.env.SAND_USER_DATA_DIR, "data");',
+  'process.env.SAND_BACKEND_URL = "http://127.0.0.1:9";',
+  'process.env.CURSOR_API_BASE_URL = "http://127.0.0.1:9";',
+  'process.env.SAND_DISABLE_UPDATES = process.env.SAND_DISABLE_SENTRY = process.env.SAND_DISABLE_TELEMETRY = "1";',
+  readFileSync(new URL("../../assets/codexbot/network-policy.cjs", import.meta.url), "utf8"),
   "// Reconstructed-build guard: do not consume official update or telemetry services.",
   "process.env.SAND_DISABLE_UPDATES ??= \"1\";",
   "process.env.SAND_DISABLE_SENTRY ??= \"1\";",

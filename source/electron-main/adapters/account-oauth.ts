@@ -1,3 +1,4 @@
+import { createLocalAccountService } from "../account/local-account.js";
 import { createCursorAuthWiring, type AuthServicePort } from "../account/cursor-auth-wiring.js";
 import type { ElectronProductionAdapterBindings } from "../production-adapters.js";
 import type { ProductionAccountService, ProductionServiceContext } from "../main-production-services.js";
@@ -29,6 +30,11 @@ function defaultWiringDeps(context: ProductionServiceContext): CursorAuthWiringD
   requireFunction(context.requireMainEdge, "account main-edge");
   requireFunction(context.coordinatorLegs?.legs?.setHostSettings, "account coordinator.setHostSettings");
   return {
+    ...(context.env.CODEXBOT_LOCAL_ONLY === "1" ? {
+      createAuthService: createLocalAccountService,
+      fetchLocalToolPermissionCeiling: async () => undefined,
+      fetchUserPrivacyMode: async () => true,
+    } : {}),
     openExternal: async (url) => { await context.native.shell.openExternal(url); },
     getAccountRuntime: () => accountRuntimeOf(context),
     emitAuthStatus: (status) => context.requireMainEdge().emit("cursor-auth-changed", status),

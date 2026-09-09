@@ -16,6 +16,7 @@ export type CodexDirectTool = {
 
 export type CodexDirectEvent =
   | { readonly type: "text-delta"; readonly delta: string }
+  | { readonly type: "tool-call"; readonly toolCallId: string; readonly toolName: string; readonly args: unknown }
   | { readonly type: "done"; readonly text: string; readonly responseId: string; readonly usage: CodexDirectUsage };
 
 export type CodexDirectOptions = {
@@ -27,6 +28,7 @@ export type CodexDirectOptions = {
   readonly input: readonly Loose[];
   readonly tools?: readonly CodexDirectTool[];
   readonly executeTool?: (tool: CodexDirectTool, args: unknown, toolCallId: string) => Promise<unknown>;
+  readonly externalToolExecution?: boolean;
   readonly maxSteps?: number;
 };
 
@@ -156,6 +158,14 @@ export async function* streamCodexDirectResponses(options: CodexDirectOptions): 
     const output = Array.isArray(completed.output) && completed.output.length > 0 ? completed.output : observedOutput;
     const calls = toolCalls(output);
     if (calls.length === 0) {
+      yield { type: "done", text, responseId, usage };
+      return;
+    }
+    if (options.externalToolExecution) {
+      for (const call of calls) {
+        if (!toolsByName.has(call.name)) throw new Error(`Unknown Grok Bot tool: ${call.name}`);
+        yield { type: "tool-call", toolCallId: call.call_id, toolName: call.name, args: JSON.parse(call.arguments || "{}") };
+      }
       yield { type: "done", text, responseId, usage };
       return;
     }

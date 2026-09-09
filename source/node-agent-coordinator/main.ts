@@ -1,3 +1,4 @@
+import "../shared/node/codexbot-network-bootstrap.js";
 import { hostname } from "node:os";
 import { pathToFileURL } from "node:url";
 

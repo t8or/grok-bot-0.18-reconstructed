@@ -3,6 +3,7 @@ import path from "node:path";
 import {
   outputApp,
   outputDir,
+  repoRoot,
   reconstructedBundleId,
   reconstructedName
 } from "./lib/config.mjs";
@@ -32,6 +33,7 @@ await run(SYSTEM_TOOLS.ditto, [runtimeApp, outputApp]);
 await run(SYSTEM_TOOLS.xattr, ["-cr", outputApp]);
 
 const resources = path.join(outputApp, "Contents", "Resources");
+await cp(path.join(repoRoot, "assets", "codexbot", "codexbot.icns"), path.join(resources, "codexbot.icns"));
 const packagedAsar = path.join(resources, "app.asar");
 const packagedUnpacked = `${packagedAsar}.unpacked`;
 await rm(packagedAsar, { force: true });
@@ -44,14 +46,14 @@ await cp(builtAsarUnpacked, packagedUnpacked, {
 });
 
 const infoPlist = path.join(outputApp, "Contents", "Info.plist");
+await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleIconFile", "-string", "codexbot.icns", infoPlist]);
+await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleIconName", "-string", "codexbot", infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-remove", "ElectronAsarIntegrity", infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleIdentifier", "-string", reconstructedBundleId, infoPlist]);
 await run(SYSTEM_TOOLS.plutil, ["-replace", "CFBundleDisplayName", "-string", reconstructedName, infoPlist]);
-// The backend currently emits only the `sand` auth/deep-link target. Make the
-// reconstructed bundle's claim explicit and remove inherited aliases such as
-// `grokbot`; the original bundle remains untouched and remains reference-only.
+// CodexBot does not claim GrokBot or Cursor authentication links.
 await run(SYSTEM_TOOLS.plutil, ["-remove", "CFBundleURLTypes", infoPlist]);
-await run(SYSTEM_TOOLS.plutil, ["-insert", "CFBundleURLTypes", "-xml", "<array><dict><key>CFBundleTypeRole</key><string>Viewer</string><key>CFBundleURLName</key><string>Grok Bot reconstructed auth callback</string><key>CFBundleURLSchemes</key><array><string>sand</string></array></dict></array>", infoPlist]);
+await cp(path.join(repoRoot, "assets/codexbot/network-policy.cjs"), path.join(outputApp, "Contents/Resources/codexbot-network.cjs"));
 // Keep CFBundleName/CFBundleExecutable as "Grok Bot": Electron derives the
 // expected nested helper names from it, and this build intentionally reuses the
 // exact ABI-matched 0.18 runtime. CFBundleDisplayName provides the fork's name.

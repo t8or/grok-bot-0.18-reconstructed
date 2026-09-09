@@ -56,6 +56,17 @@ export function createElectronProductionCursorAccountBinding(): ElectronProducti
         fetchPrivacyModeEnabled: (getAccessToken) => fetchUserPrivacyModeEnabled(getAccessToken, { getMachineId }),
         cancelTrial: (getAccessToken) => cancelSandTrial(getAccessToken, { getMachineId }),
         invokeDashboardAction: (getAccessToken, request) => invokeSandDashboardAction(getAccessToken, request, { getMachineId }),
+        ...(context.env.CODEXBOT_LOCAL_ONLY === "1" ? {
+          readSandAccess: async () => ({ state: "granted" as const, reason: "none" as const }),
+          resolveAvatar: async () => null,
+          fetchWeeklyUsage: async () => null,
+          isUsagePageEnabled: () => false,
+          fetchUsageSummary: async () => null,
+          fetchPrReviewPreferences: async () => ({ user: undefined, team: undefined }),
+          fetchPrivacyModeEnabled: async () => true,
+          cancelTrial: async () => ({ ok: false, message: "Cursor services are disabled in CodexBot." }),
+          invokeDashboardAction: async () => ({ ok: false, message: "Cursor services are disabled in CodexBot." }),
+        } : {}),
         productDisplayName: SAND_PRODUCT_DISPLAY_NAME,
       });
     },

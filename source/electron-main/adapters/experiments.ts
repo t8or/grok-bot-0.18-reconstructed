@@ -20,6 +20,15 @@ export function createProductionExperimentsAdapter(
   requireFunction(ports?.reportEdgeFailure, "experiments.reportEdgeFailure");
   return {
     async create(context) {
+      if (context.env.CODEXBOT_LOCAL_ONLY === "1") return {
+        ensureService: async () => ({ getSnapshot: () => ({}), applyFeatureFlagOverrideCommand: async () => ({}), refreshNow: async () => {} }),
+        isTelemetryDisabled: () => true, startRpcTraceWindow: () => false,
+        getComputerUseModelOverride: () => undefined, subscribe: () => () => {},
+        getSnapshot: () => ({}), getFeatureFlagOverridesRecord: () => ({}),
+        checkFeatureGate: () => false, getDynamicConfig: () => ({}),
+        hasLiveStatsigBootstrap: () => false, getFlagsAgeMs: () => undefined,
+        dispose: async () => {},
+      };
       const runtime = createExperimentsRuntime({
         ensureCursorAuthService: async () => await ports.getAuthService(context),
         getMachineId: async () => context.machineId,

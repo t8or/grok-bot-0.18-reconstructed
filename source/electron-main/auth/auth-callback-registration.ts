@@ -51,7 +51,7 @@ export function registerAuthCallbackProtocol(options: {
   const env = options.env ?? process.env;
   const redirectTarget = resolveAuthRedirectTarget(env);
   const protocolScheme = resolveAuthProtocolScheme(env);
-  if (!options.isPackaged || options.isLabBuild) return { redirectTarget, protocolScheme, registered: false, skipped: true };
+  if (env.CODEXBOT_LOCAL_ONLY === "1" || !options.isPackaged || options.isLabBuild) return { redirectTarget, protocolScheme, registered: false, skipped: true };
   if (typeof options.app.setAsDefaultProtocolClient !== "function") return { redirectTarget, protocolScheme, registered: false, skipped: true };
   return { redirectTarget, protocolScheme, registered: options.app.setAsDefaultProtocolClient(protocolScheme), skipped: false };
 }

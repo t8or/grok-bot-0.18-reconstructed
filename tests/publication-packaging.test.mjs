@@ -52,9 +52,9 @@ test("Router settings use the trusted backend and display recorded inference usa
   assert.match(rendererPatch, /desktop\.agent\.getInferenceRouter\(\)/);
   assert.match(rendererPatch, /desktop\.agent\.setInferenceRouter\(n\)/);
   assert.match(rendererPatch, /desktop\.agent\.getBoxRuntime\(\)/);
-  assert.match(rendererPatch, /desktop\.agent\.setBoxRuntime\(r\)/);
-  assert.match(rendererPatch, /role:"switch"/);
-  assert.match(rendererPatch, /Use local Docker VM/);
+  assert.doesNotMatch(rendererPatch, /desktop\.agent\.setBoxRuntime\(r\)/);
+  assert.match(rendererPatch, /Local Docker container/);
+  assert.match(rendererPatch, /Local only/);
   assert.match(rendererPatch, /onValueChange:l=>\{if\(l!==null\)void e\(l\)\}/);
   assert.match(rendererPatch, /desktop\.secrets\.upsert/);
   assert.doesNotMatch(rendererPatch, /settings\.router-provider\.v1/);

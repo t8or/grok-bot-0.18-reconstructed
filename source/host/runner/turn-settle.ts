@@ -40,6 +40,7 @@ export type ProfilePromptSnapshot = AgentProfilePromptSnapshot;
 export interface TurnSettleHost {
   readonly isSubagentRunner: boolean;
   readonly transcriptMirror?: {
+    recover?(context: unknown, transcriptId: string, checkpoint: TurnCheckpoint, blobStore: unknown): Promise<void>;
     prepareCheckpoint(
       context: unknown,
       transcriptId: string,
@@ -186,12 +187,15 @@ export function createTurnSettle(
       readonly maxTokens?: number;
     } = { kind: "fresh" };
 
-  function noteBaseState(
+  async function noteBaseState(
     baseState: TurnCheckpoint,
     enableTranscriptPersistence = true,
-  ): void {
+    context?: unknown,
+  ): Promise<void> {
     observedSummaryArchiveCount = baseState.summaryArchives.length;
     transcriptPersistenceEnabled = enableTranscriptPersistence;
+    // Restore journal state from the durable pre-turn checkpoint before writing.
+    if (enableTranscriptPersistence) await host.transcriptMirror?.recover?.(context, host.getTranscriptId(), baseState, host.getBlobStore());
   }
 
   function prepareCheckpointForPersistence(

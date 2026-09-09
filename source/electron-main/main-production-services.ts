@@ -1,3 +1,4 @@
+import { SAND_PRODUCT_DISPLAY_NAME } from "../shared/product-name.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ApplicationMenuElectronPort, ApplicationMenuItem } from "./application-menu.js";
@@ -144,7 +145,7 @@ export function resolveElectronProductionResources(args: {
   const isAttachProdBox = !args.app.isPackaged && resolveAttachProdBoxPreferred(args.env, args.attachProdBoxPreferencePath);
   return {
     metadata: args.metadata,
-    appName: args.app.getName(),
+    appName: SAND_PRODUCT_DISPLAY_NAME,
     preloadPath: join(args.moduleDir, "..", "electron-preload", preloadName),
     rendererHtmlPath: join(args.moduleDir, "..", "renderer", "index.html"),
     ...(args.env.SAND_DEV_APP_ICON == null ? {} : { devAppIcon: args.env.SAND_DEV_APP_ICON }),
@@ -153,7 +154,7 @@ export function resolveElectronProductionResources(args: {
 }
 
 export function createElectronMenuAdapter(native: ElectronProductionNativeBindings): ApplicationMenuElectronPort {
-  return { appName: native.app.getName(), buildFromTemplate: (template) => native.Menu.buildFromTemplate(template), setApplicationMenu: (menu) => native.Menu.setApplicationMenu(menu), openExternal: (url) => native.shell.openExternal(url) };
+  return { appName: SAND_PRODUCT_DISPLAY_NAME, buildFromTemplate: (template) => native.Menu.buildFromTemplate(template), setApplicationMenu: (menu) => native.Menu.setApplicationMenu(menu), openExternal: (url) => native.shell.openExternal(url) };
 }
 
 export interface ProductionDisposable { dispose(): void | Promise<void> }
@@ -539,6 +540,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
         reportEdgeFailure: (area, leg, error) => bindings.reportFailure(area, leg, error),
       });
       bindings.services.initializeSecureStorage();
+      if (env.CODEXBOT_LOCAL_ONLY === "1") console.info("[CodexBot] initializing storage");
       const machineId = await bindings.services.getMachineId();
       if (typeof machineId !== "string" || machineId.length === 0) throw new Error("Electron production machine id binding returned an empty value.");
       const shell = {
@@ -762,8 +764,10 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
       ensureTranscriptionManager = bindings.services.createTranscriptionManager(base);
       context = { ...base, attachments, avatarImages, cursorAccount, ensureTranscriptionManager };
       mainEdge = bindings.services.createMainEdge(context); if (typeof mainEdge.emit !== "function") throw new Error("Electron production main-edge binding did not provide emit()."); if (typeof mainEdge.dispose === "function") track(mainEdge as MainEdge & ProductionDisposable);
+      if (env.CODEXBOT_LOCAL_ONLY === "1") console.info("[CodexBot] initializing update");
       update = track(requireDisposable(await bindings.services.createUpdate(context), "update"));
       track(requireDisposable(bindings.services.registerMedia(context), "media"));
+      if (env.CODEXBOT_LOCAL_ONLY === "1") console.info("[CodexBot] initializing local account");
       account = track(requireDisposable(await bindings.services.createAccount(context), "account"));
       accountLifecycle.deliverStatus(await account.getStatus());
       accountStatusUnsubscribe = account.subscribe(() => {
@@ -779,12 +783,14 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
           return await startupAuthService.devLogin(options);
         },
       }, env);
+      if (env.CODEXBOT_LOCAL_ONLY === "1") console.info("[CodexBot] initializing local experiments");
       experiments = track(requireDisposable(await bindings.services.createExperiments(context), "experiments"));
       update.attachExperiments(experiments);
       void requireValue(productAnalytics, "product-analytics").activate({
         checkGate: async (name) => requireValue(experiments, "experiments").checkFeatureGate(name),
         subscribe: (listener) => requireValue(experiments, "experiments").subscribe(listener),
       }).catch((error) => bindings.reportFailure("product-analytics", "activate", error));
+      if (env.CODEXBOT_LOCAL_ONLY === "1") console.info("[CodexBot] initializing plugins");
       mcp = track(requireDisposable(await bindings.services.createMcp(context), "mcp"));
       notifications = track(requireDisposable(bindings.services.createNotifications(context), "notifications"));
       telemetry = track(requireDisposable(await bindings.services.createTelemetry(context), "telemetry"));
@@ -798,6 +804,7 @@ export function createElectronMainProductionComposition(bindings: ElectronMainPr
         });
         telemetry.telemetry.setFlushTickListener(() => desktopEventLoopSampler?.onTick());
       }
+      if (env.CODEXBOT_LOCAL_ONLY === "1") console.info("[CodexBot] initializing coordinator");
       coordinator = track(requireDisposable(await bindings.services.createCoordinator(context), "coordinator"));
       prioritizeBoxRecoveryDisposal();
       await coordinator.start(await account.getStatus());

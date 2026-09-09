@@ -1,8 +1,12 @@
+import { requestCodexReview } from "../inference/provider-session.js";
+import { CODEXBOT_REVIEW_INSTRUCTIONS, parseCodexReviewDecision } from "./codex-review-decision.js";
 import type { MethodInfoUnary } from "@bufbuild/protobuf";
 import type { Context } from "../../../packages/context/core.js";
 import {
   SmartModeClassifierArgs,
-  type SmartModeClassifierResult,
+  SmartModeClassifierResult,
+  SmartModeClassifierSuccess,
+  SmartModeClassifierDecision,
 } from "../../../packages/proto/generated/agent/v1/smart_mode_classifier_exec_pb.js";
 import { DashboardService } from "../../../packages/proto/generated/aiserver/v1/dashboard_connect.js";
 import {
@@ -23,6 +27,16 @@ export class SandSmartModeClassifierError extends Error {}
 export function createSandBackendSmartModeClassifierExecutor(
   options: Omit<SandInferenceOptions, "backendUrl">,
 ) {
+  if (process.env.CODEXBOT_LOCAL_ONLY === "1") return {
+    async execute(ctx: Context, args: SmartModeClassifierArgs): Promise<SmartModeClassifierResult> {
+      const text = await requestCodexReview(CODEXBOT_REVIEW_INSTRUCTIONS, args.toJsonString(), ctx.signal);
+      const decision = parseCodexReviewDecision(text);
+      return new SmartModeClassifierResult({ result: { case: "success", value: new SmartModeClassifierSuccess({
+        decision: decision.decision === "allow" ? SmartModeClassifierDecision.ALLOW : SmartModeClassifierDecision.BLOCK,
+        ...(decision.decision === "block" ? { blockReason: decision.reason } : {}),
+      }) } });
+    },
+  };
   const service = DashboardService as typeof DashboardService & {
     readonly methods: typeof DashboardService.methods & {
       readonly classifySandAutoReview: MethodInfoUnary<

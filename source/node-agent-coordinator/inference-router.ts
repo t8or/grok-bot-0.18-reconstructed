@@ -188,6 +188,12 @@ export function createCoordinatorInferenceRouter(options: {
     provider(): SandInferenceProvider { return settings.getInferenceProvider(); },
     async dispatch(method: string, args: unknown): Promise<{ handled: boolean; value?: unknown }> {
       const provider = settings.getInferenceProvider();
+      if (method === "sendPrompt" && provider === "codex" && settings.getBoxRuntime() === "local-docker") {
+        // The container owns the full agent loop and its shell/filesystem tools.
+        // The desktop-only router exposes MCP plugins, not container execution.
+        await options.dispatchRemote("setHostSettings", { inferenceProvider: provider });
+        return { handled: false };
+      }
       if (method === "reactToMessage") {
         const record = asRecord(args) ?? {};
         const agentId = typeof record.agentId === "string" ? record.agentId : "";

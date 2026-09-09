@@ -8,6 +8,19 @@ import { transform } from "esbuild";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+test("Codex hands tool calls to the host runner when it owns execution", async () => {
+  const { streamCodexDirectResponses } = await loadModule();
+  const events = [];
+  for await (const event of streamCodexDirectResponses({
+    fetch: async () => sse([{ type: "response.completed", response: {
+      id: "host-turn", output: [{ type: "function_call", call_id: "shell-1", name: "shell", arguments: '{"command":"pwd"}' }], usage: { input_tokens: 2, output_tokens: 3 }
+    } }]), endpoint: "https://example.invalid", model: "test", instructions: "test", input: [],
+    tools: [{ name: "shell", parameters: { type: "object" } }], externalToolExecution: true,
+  })) events.push(event);
+  assert.deepEqual(events[0], { type: "tool-call", toolCallId: "shell-1", toolName: "shell", args: { command: "pwd" } });
+  assert.equal(events.at(-1).type, "done");
+});
+
 async function loadModule() {
   const source = await readFile(path.join(repoRoot, "source/host/extensions/inference/codex-direct-responses.ts"), "utf8");
   const { code } = await transform(source, { format: "esm", loader: "ts", target: "es2022" });

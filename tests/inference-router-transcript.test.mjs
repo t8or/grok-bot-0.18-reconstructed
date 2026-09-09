@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -8,6 +8,18 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+
+test("local Docker Codex turns are executed by the container host", async () => {
+  const loaded = await loadModule();
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), "grok-local-route-"));
+  try {
+    await writeFile(path.join(dataDir, "settings.json"), JSON.stringify({ version: 1, inferenceProvider: "codex", boxRuntime: "local-docker" }));
+    const calls = [];
+    const router = loaded.module.createCoordinatorInferenceRouter({ dataDir, postEvent() {}, dispatchRemote: async (...args) => { calls.push(args); return {}; } });
+    assert.deepEqual(await router.dispatch("sendPrompt", { agentId: "local", prompt: "pwd" }), { handled: false });
+    assert.deepEqual(calls, [["setHostSettings", { inferenceProvider: "codex" }]]);
+  } finally { await loaded.dispose(); await rm(dataDir, { recursive: true, force: true }); }
+});
 
 async function loadModule() {
   const temporary = await mkdtemp(path.join(os.tmpdir(), "grok-inference-router-transcript-"));

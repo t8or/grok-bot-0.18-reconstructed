@@ -1,3 +1,4 @@
+import "../shared/node/codexbot-network-bootstrap.js";
 import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";

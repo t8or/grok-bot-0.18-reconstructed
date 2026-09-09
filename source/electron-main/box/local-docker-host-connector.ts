@@ -1,3 +1,4 @@
+import { resolveDockerExecutable } from "./docker-executable.js";
 import { createHash, randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
@@ -14,7 +15,7 @@ export const LOCAL_DOCKER_BOX_IMAGE = "public.ecr.aws/k0i0n2g5/cursorenvironment
 export const LOCAL_DOCKER_BOX_CONTAINER = "grok-bot-local-vm";
 export const LOCAL_DOCKER_GATEWAY_URL = "http://127.0.0.1:1340";
 export const LOCAL_DOCKER_OWNER_LABEL = "com.grok-bot.local-vm=1";
-export const LOCAL_DOCKER_SCHEMA_VERSION = "6";
+export const LOCAL_DOCKER_SCHEMA_VERSION = "7";
 const READY_TIMEOUT_MS = 180_000;
 const OPTIONAL_CREDENTIAL_TIMEOUT_MS = 3_000;
 
@@ -33,7 +34,10 @@ interface LocalHostBundle { readonly path: string; readonly sha256: string; read
 
 function runDocker(args: readonly string[]): Promise<CommandResult> {
   return new Promise((resolve) => {
-    const child = spawn("docker", [...args], { stdio: ["ignore", "pipe", "pipe"] });
+    let docker: string;
+    try { docker = resolveDockerExecutable(); }
+    catch (error) { resolve({ ok: false, output: error instanceof Error ? error.message : String(error) }); return; }
+    const child = spawn(docker, [...args], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, PATH: `${dirname(docker)}:${process.env.PATH ?? ""}` } });
     let output = "";
     const append = (chunk: Buffer): void => { output += chunk.toString(); if (output.length > 200_000) output = output.slice(-200_000); };
     child.stdout?.on("data", append);
@@ -191,6 +195,13 @@ async function ensureLocalDockerBox(settingsPath: string, inferenceCredential?: 
       "--platform", "linux/amd64", "--restart", "unless-stopped",
       "--env", "SAND_SUPERVISOR_ENABLED=1", "--env", "SAND_BOX_AUTO_UPDATE=0", "--env", "SAND_USE_EXISTING_BOX_EXEC_DAEMON=1", "--env", "SAND_TREE_SITTER_NODE_DEPS=/home/box/deps", "--env", "NODE_PATH=/home/box/deps", "--env", "SAND_GATEWAY_BIND_HOST=0.0.0.0", "--env", "SAND_HOST_PORT=1340", "--env", `SAND_GATEWAY_TOKEN=${token}`,
       ...(inferenceCredential == null ? [] : ["--env", "SAND_DEV_INFERENCE_TOKEN_FILE=/run/grok-bot/inference.json", "--env", `SAND_BACKEND_URL=${inferenceCredential.backendUrl}`]),
+      ...(process.env.CODEXBOT_LOCAL_ONLY === "1" ? [
+        "--env", "CODEXBOT_LOCAL_ONLY=1", "--env", "SAND_BACKEND_URL=http://127.0.0.1:9",
+        "--env", "CURSOR_API_BASE_URL=http://127.0.0.1:9", "--env", "SAND_DISABLE_TELEMETRY=1",
+        "--env", "SAND_DISABLE_SENTRY=1", "--env", "SAND_DISABLE_UPDATES=1",
+        "--env", "NODE_OPTIONS=--require=/run/codexbot-network.cjs",
+        "--mount", `type=bind,src=${resolve(dirname(process.execPath), "../Resources/codexbot-network.cjs")},dst=/run/codexbot-network.cjs,readonly`,
+      ] : []),
       "--publish", "127.0.0.1:1337:1337", "--publish", "127.0.0.1:1339:1339", "--publish", "127.0.0.1:1340:1340",
       "--publish", "127.0.0.1:6080:6080", "--publish", "127.0.0.1:6081:6081", "--publish", "127.0.0.1:8790:8790",
       "--volume", "grok-bot-local-vm-workspace:/workspace", "--volume", "grok-bot-local-vm-data:/home/box/sand-data",
@@ -233,7 +244,7 @@ export function createSettingsRoutedHostConnector(
 ): SandRemoteHostConnector {
   const localConnect = (): Promise<GatewayConnection> => {
     if (ensureInFlight == null) ensureInFlight = (async () => {
-      const issued = remote.issueInferenceCredential == null ? undefined : await Promise.race([
+      const issued = process.env.CODEXBOT_LOCAL_ONLY === "1" || remote.issueInferenceCredential == null ? undefined : await Promise.race([
         remote.issueInferenceCredential(),
         new Promise<undefined>((resolve) => setTimeout(resolve, OPTIONAL_CREDENTIAL_TIMEOUT_MS)),
       ]);
@@ -242,9 +253,10 @@ export function createSettingsRoutedHostConnector(
     return ensureInFlight;
   };
   return {
+    ...(process.env.CODEXBOT_LOCAL_ONLY === "1" ? { issueLocalExecDaemonCredential: async () => undefined } : {}),
     connect: async () => settings.getBoxRuntime() === "local-docker" ? await localConnect() : await remote.connect(),
-    ...(remote.issueLocalExecDaemonCredential == null ? {} : { issueLocalExecDaemonCredential: remote.issueLocalExecDaemonCredential.bind(remote) }),
-    ...(remote.issueInferenceCredential == null ? {} : { issueInferenceCredential: remote.issueInferenceCredential.bind(remote) }),
+    ...(process.env.CODEXBOT_LOCAL_ONLY === "1" || remote.issueLocalExecDaemonCredential == null ? {} : { issueLocalExecDaemonCredential: remote.issueLocalExecDaemonCredential.bind(remote) }),
+    ...(process.env.CODEXBOT_LOCAL_ONLY === "1" || remote.issueInferenceCredential == null ? {} : { issueInferenceCredential: remote.issueInferenceCredential.bind(remote) }),
     recreate: async (args): Promise<RecreateResult> => {
       if (settings.getBoxRuntime() !== "local-docker") {
         if (remote.recreate == null) throw new Error("Remote computer recreation is unavailable.");

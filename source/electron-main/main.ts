@@ -377,6 +377,7 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
         deps.startup.cancel();
         return;
       }
+      if (env.CODEXBOT_LOCAL_ONLY === "1") console.info("[CodexBot] checking local startup");
       deps.startup.markPhase("move_check");
       const moveDisposition = await deps.startup.runMoveCheck({
         hasPendingActivation: deps.deepLinks.hasPendingActivation,
@@ -384,6 +385,7 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
       if (moveDisposition === "stop-bootstrap") return;
       deps.startup.armStuckWatchdog();
       deps.startup.markPhase("services");
+      if (env.CODEXBOT_LOCAL_ONLY === "1") console.info("[CodexBot] initializing local services");
       services = await deps.initializeServices({ routeHostInput: hostChords.routeHostInput });
 
       const membership = createDevToolsMembershipResolver({
@@ -417,7 +419,7 @@ export function startElectronMain(deps: ElectronMainDependencies): ElectronMainR
         if (deps.getAllWindows().length === 0) ensureMainWindow();
       });
     })
-    .catch((error: unknown) => deps.startup.noteFailed(error));
+    .catch((error: unknown) => { console.error("[CodexBot] startup failed", error); deps.startup.noteFailed(error); });
 
   deps.app.on("window-all-closed", () => {
     if (platform !== "darwin") deps.app.quit();

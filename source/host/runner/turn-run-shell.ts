@@ -700,9 +700,10 @@ export function createTurnRunShell(host: TurnRunShellHost) {
         options,
         context,
       );
-      settle.noteBaseState(
+      await settle.noteBaseState(
         prepared.baseState,
         prepared.transcriptPersistenceEnabled,
+        context,
       );
 
       if (controller.signal.aborted) {

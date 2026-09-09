@@ -132,22 +132,28 @@ function codexAuthenticatedFetch(initial: CodexCredentials): typeof fetch {
 }
 
 function configuredCodexModel(): string {
-  const selected = process.env.SAND_CODEX_MODEL?.trim();
-  if (selected) return selected;
-  try {
-    const config = readFileSync(join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "config.toml"), "utf8");
-    return /^\s*model\s*=\s*["']([^"']+)["']/m.exec(config)?.[1]?.trim() || "gpt-5.4";
-  } catch { return "gpt-5.4"; }
+  return process.env.SAND_CODEX_MODEL?.trim() || "gpt-5.6-sol";
 }
 
-function configuredCodexReasoningEffort(): "minimal" | "low" | "medium" | "high" | "xhigh" | undefined {
+function configuredCodexReasoningEffort(): "minimal" | "low" | "medium" | "high" | "xhigh" {
   const selected = process.env.SAND_CODEX_REASONING_EFFORT?.trim();
   if (selected === "minimal" || selected === "low" || selected === "medium" || selected === "high" || selected === "xhigh") return selected;
-  try {
-    const config = readFileSync(join(process.env.CODEX_HOME?.trim() || join(homedir(), ".codex"), "config.toml"), "utf8");
-    const value = /^\s*model_reasoning_effort\s*=\s*["']([^"']+)["']/m.exec(config)?.[1]?.trim();
-    return value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh" ? value : undefined;
-  } catch { return undefined; }
+  return "medium";
+}
+
+/** Text-only Codex request for local action review, using the same account and model. */
+export async function requestCodexReview(instructions: string, input: string, signal?: AbortSignal): Promise<string> {
+  const authenticatedFetch = codexAuthenticatedFetch(codexCredentials());
+  const timeout = AbortSignal.timeout(60_000);
+  const reviewSignal = signal == null ? timeout : AbortSignal.any([signal, timeout]);
+  let result = "";
+  for await (const event of streamCodexDirectResponses({
+    fetch: (url, init) => authenticatedFetch(url, { ...init, signal: reviewSignal }),
+    endpoint: "https://chatgpt.com/backend-api/codex/responses",
+    model: configuredCodexModel(), reasoningEffort: configuredCodexReasoningEffort(),
+    instructions, input: [{ role: "user", content: input }], maxSteps: 1,
+  })) if (event.type === "done") result = event.text;
+  return result;
 }
 
 function codexTools(definitions: readonly Loose[] | undefined): CodexDirectTool[] | undefined {
@@ -174,6 +180,7 @@ function codexExecutor(messages: readonly ProviderMessage[], invocationId: strin
   const tools = codexTools(definitions);
   const fullStream = (async function* () {
     let text = "";
+    const toolCalls: Loose[] = [];
     try {
       for await (const event of streamCodexDirectResponses({
         fetch: codexAuthenticatedFetch(credentials),
@@ -184,16 +191,25 @@ function codexExecutor(messages: readonly ProviderMessage[], invocationId: strin
         input: messages.map(message => ({ role: message.role === "assistant" ? "assistant" : "user", content: typeof message.content === "string" ? message.content : JSON.stringify(message.content) })),
         ...(tools == null ? {} : { tools }),
         ...(executeTool == null ? {} : { executeTool: async (selected, args, toolCallId) => await executeTool(selected.source, args, toolCallId) }),
+        externalToolExecution: executeTool == null,
         maxSteps: tools == null ? 1 : 8,
       })) {
         if (event.type === "text-delta") { text += event.delta; yield { type: "text-delta" as const, textDelta: event.delta }; continue; }
+        if (event.type === "tool-call") {
+          toolCalls.push(event);
+          yield { type: "tool-call-streaming-start" as const, toolCallId: event.toolCallId, toolName: event.toolName };
+          yield event;
+          continue;
+        }
         const basic = { promptTokens: event.usage.inputTokens, completionTokens: event.usage.outputTokens, totalTokens: event.usage.inputTokens + event.usage.outputTokens };
         const extended = { ...event.usage, maxTokens: 0 };
         onUsage?.(event.usage);
         usage.resolve(basic);
         extendedUsage.resolve(extended);
         metadata.resolve({ openai: { responseId: event.responseId, direct: true } });
-        resultResponse.resolve(response(text, invocationId, model));
+        const completed = response(text, invocationId, model);
+        if (toolCalls.length > 0) (completed.messages[0]!.content as Loose[]).push(...toolCalls);
+        resultResponse.resolve(completed);
       }
     } catch (error) { usage.reject(error); extendedUsage.reject(error); metadata.reject(error); resultResponse.reject(error); throw error; }
   })();
